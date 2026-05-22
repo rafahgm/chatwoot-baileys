@@ -1,0 +1,8 @@
+allowBuilds:
+  '@prisma/engines': true
+  '@whiskeysockets/baileys': true
+  esbuild: true
+  ffmpeg-static: true
+  prisma: true
+  protobufjs: true
+  sharp: true
