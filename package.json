@@ -23,7 +23,9 @@
     "@types/qrcode-terminal": "^0.12.2",
     "prisma": "^7.8.0",
     "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "@antfu/eslint-config": "^9.0.0",
+    "eslint": "^10.3.0"
   },
   "dependencies": {
     "@fastify/multipart": "^10.0.0",
