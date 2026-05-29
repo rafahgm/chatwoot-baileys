@@ -55,7 +55,7 @@ export class BaileysAdapter implements IBaileysService {
         markOnlineOnConnect: true,
         keepAliveIntervalMs: 30_000,
         shouldIgnoreJid: jid => isJidBroadcast(jid),
-        getMessage: async (key) => {
+        getMessage: async (_key) => {
           return proto.Message.fromObject({})
         },
       })
@@ -167,7 +167,7 @@ export class BaileysAdapter implements IBaileysService {
     return this.connectionState.connected
   }
 
-  async sendTextMessage(to: string, text: string, options?: { quoted?: string }): Promise<string> {
+  async sendTextMessage(to: string, text: string, options?: { quoted?: WAMessage }): Promise<string> {
     if (!this.sock)
       throw new Error('Socket não conectado')
 
@@ -181,7 +181,50 @@ export class BaileysAdapter implements IBaileysService {
     return result.key.id
   }
 
-  async sendMediaMessage(to: string, type: 'image' | 'video' | 'audio' | 'document', media: { buffer?: Buffer, url?: string, stream?: ReadableStream }): Promise<string> {}
+  async sendMediaMessage(
+    to: string,
+    type: 'image' | 'video' | 'audio' | 'document',
+    media: { buffer?: Buffer, url?: string, stream?: ReadableStream },
+    options?: { caption?: string, ptt?: boolean, fileName?: string, mimeType?: string },
+  ): Promise<string> {
+    if (!this.sock)
+      throw new Error('Socket não conectado')
+
+    const messageContent: any = {}
+
+    if (media.buffer) {
+      messageContent[type] = media.buffer
+    }
+    else if (media.url) {
+      messageContent[type] = { url: media.url }
+    }
+
+    if (type === 'audio' && options?.ptt) {
+      messageContent.ptt = true
+      messageContent.mimeType = options.mimeType || 'audio/ogg; codecs=opus'
+    }
+    else if (options?.caption && type !== 'audio') {
+      messageContent.caption = options.caption
+    }
+
+    if (options?.fileName && type === 'document') {
+      messageContent.fileName = options.fileName
+    }
+
+    if (options?.mimeType) {
+      messageContent.mimeType = options.mimeType
+    }
+
+    const result = await this.sock.sendMessage(to, messageContent)
+    return result!.key.id!
+  }
+
+  async sendVoiceNote(to: string, audioBuffer: Buffer): Promise<string> {
+    return this.sendMediaMessage(to, 'audio', { buffer: audioBuffer }, {
+      ptt: true,
+      mimeType: 'audio/ogg; codecs=opus',
+    })
+  }
 
   private async parseWAMessage(waMsg: WAMessage): Promise<Message | null> {
     const msgContent = waMsg.message

@@ -1,3 +1,4 @@
+import type { WAMessage } from '@whiskeysockets/baileys'
 import type { Buffer } from 'node:buffer'
 import type { Contact } from '../../domain/entities/Contact.js'
 import type { Message } from '../../domain/entities/Message.js'
@@ -7,7 +8,7 @@ export interface IBaileysService {
   disconnect: () => Promise<void>
   isConnected: () => boolean
 
-  sendTextMessage: (to: string, text: string, options?: { quoted?: string }) => Promise<string>
+  sendTextMessage: (to: string, text: string, options?: { quoted?: WAMessage }) => Promise<string>
   sendMediaMessage: (to: string, type: 'image' | 'video' | 'audio' | 'document', media: { buffer?: Buffer, url?: string, stream?: ReadableStream }, options?: { caption?: string, ptt?: boolean, fileName?: string, mimeType?: string }) => Promise<string>
   sendVoiceNote: (to: string, audioBuffer: Buffer) => Promise<string>
 
