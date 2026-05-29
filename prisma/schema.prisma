@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Message {
+  id                    String   @id @default(uuid())
+  externalId            String   @unique // wa_message_id
+  direction             String   // inbound | outbound
+  type                  String   // text | image | video | audio | voice | document | sticker | location | contact
+  from                  String
+  to                    String
+  chatId                String
+  content               String?
+  mediaUrl              String?
+  mediaMimeType         String?
+  mediaFileName         String?
+  mediaFileSize         Int?
+  mediaDuration         Int?
+  isGroup               Boolean  @default(false)
+  quotedMessageId       String?
+  timestamp             DateTime
+  status                String   @default("pending") // pending | sent | delivered | read | failed
+  error                 String?
+  
+  // Chatwoot refs
+  chatwootConversationId Int?
+  chatwootMessageId      Int?
+  chatwootContactId      Int?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([externalId])
+  @@index([chatwootMessageId])
+  @@index([status])
+  @@index([chatId, timestamp])
+}
+
+model Contact {
+  id            String   @id
+  phoneNumber   String   @unique
+  name          String?
+  pushName      String?
+  profilePicture String?
+  isBusiness    Boolean  @default(false)
+  labels        String?  // JSON array
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
