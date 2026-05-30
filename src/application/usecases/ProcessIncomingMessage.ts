@@ -3,7 +3,7 @@ import type { IContactRepository } from '../../domain/repositories/IContactRepos
 import type { IMessageRepository } from '../../domain/repositories/IMessageRepository.js'
 import type { IMediaProcessor } from '../../domain/services/MediaProcessor.js'
 import type { IChatwootService } from '../ports/IChatwootService.js'
-import { logger } from '../../config/logger.js'
+import { logger } from '../../logger.js'
 import { MessageDirection, MessageType } from '../../domain/entities/Message.js'
 
 export class ProcessIncomingMessageUseCase {

@@ -2,7 +2,7 @@ import type { Message } from '../../domain/entities/Message.js'
 import type { IMessageRepository } from '../../domain/repositories/IMessageRepository.js'
 import type { IMediaProcessor } from '../../domain/services/MediaProcessor.js'
 import type { IBaileysService } from '../ports/IBaileysService.js'
-import { logger } from '../../config/logger.js'
+import { logger } from '../../logger.js'
 import { MessageDirection, MessageType } from '../../domain/entities/Message.js'
 
 export class ProcessOutgoingMessageUseCase {

@@ -1,6 +1,6 @@
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
-import { logger } from '~/config/logger.js'
+import { logger } from '~/logger.js'
 import { statusRoutes } from './routes/status.js'
 
 export async function buildServer() {

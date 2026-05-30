@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { DisconnectReason, downloadMediaMessage, fetchLatestBaileysVersion, isJidBroadcast, makeCacheableSignalKeyStore, makeWASocket, proto, useMultiFileAuthState } from '@whiskeysockets/baileys'
 import NodeCache from 'node-cache'
 import qrcode from 'qrcode-terminal'
-import { logger } from '~/config/logger.js'
+import { logger } from '~/logger.js'
 import { MessageDirection, MessageType } from '~/domain/entities/Message.js'
 
 export class BaileysAdapter implements IBaileysService {

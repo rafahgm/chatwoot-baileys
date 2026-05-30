@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { createHmac } from 'node:crypto'
 import { ProcessOutgoingMessageUseCase } from '../../../application/usecases/ProcessOutgoingMessage.js'
-import { logger } from '../../../config/logger.js'
+import { logger } from '../../../logger.js'
 
 export async function webhookRoutes(app: FastifyInstance) {
   // Webhook do Chatwoot -> Enviar para WhatsApp

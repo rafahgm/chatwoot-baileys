@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import axios from 'axios'
 import { lookup } from 'mime-types'
-import { logger } from '~/config/logger.js'
+import { logger } from '~/logger.js'
 
 const exec = promisify(execCb)
 
