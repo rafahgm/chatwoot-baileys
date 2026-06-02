@@ -1,7 +1,6 @@
 import type { Boom } from '@hapi/boom'
 import type { WAMessage } from '@whiskeysockets/baileys'
 import type { Buffer } from 'node:buffer'
-import type { IBaileysService } from '~/application/ports/IBaileysService.js'
 import type { Contact } from '~/domain/entities/Contact.js'
 import type { MediaMetadata, Message } from '~/domain/entities/Message.js'
 import { rmSync } from 'node:fs'
@@ -10,10 +9,10 @@ import { join } from 'node:path'
 import { DisconnectReason, downloadMediaMessage, fetchLatestBaileysVersion, isJidBroadcast, makeCacheableSignalKeyStore, makeWASocket, proto, useMultiFileAuthState } from '@whiskeysockets/baileys'
 import NodeCache from 'node-cache'
 import qrcode from 'qrcode-terminal'
-import { logger } from '~/logger.js'
 import { MessageDirection, MessageType } from '~/domain/entities/Message.js'
+import { logger } from '~/logger.js'
 
-export class BaileysAdapter implements IBaileysService {
+export class BaileysAdapter {
   private sock: ReturnType<typeof makeWASocket> | null = null
   private authState: any
   private msgRetryCounterCache = new NodeCache({ stdTTL: 10, checkperiod: 120 })

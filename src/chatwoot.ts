@@ -1,11 +1,10 @@
 import type { AxiosInstance } from 'axios'
-import type { ChatwootWebhookPayload, IChatwootService } from '../../application/ports/IChatwootService.js'
-import type { Contact, Message } from '../../domain/entities/Message.js'
+import type { Contact, Message } from '~/database/Message.js'
 import axios from 'axios'
 import FormData from 'form-data'
-import { logger } from '../../logger.js'
+import { logger } from '~/logger.js'
 
-export class ChatwootAdapter implements IChatwootService {
+export class ChatwootAdapter {
   private client: AxiosInstance
   private baseUrl: string
   private accountId: number

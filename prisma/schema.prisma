@@ -1,38 +1,63 @@
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/prisma"
 }
 
 datasource db {
   provider = "sqlite"
 }
 
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageDirection {
+  INCOMING
+  OUTGOING
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENTO
+  VOICE
+  STICKER
+  LOCATION
+  CONTACT
+  UNKNOWN
+}
 
 model Message {
-  id                    String   @id @default(uuid())
-  externalId            String   @unique // wa_message_id
-  direction             String   // inbound | outbound
-  type                  String   // text | image | video | audio | voice | document | sticker | location | contact
-  from                  String
-  to                    String
-  chatId                String
-  content               String?
-  mediaUrl              String?
-  mediaMimeType         String?
-  mediaFileName         String?
-  mediaFileSize         Int?
-  mediaDuration         Int?
-  isGroup               Boolean  @default(false)
-  quotedMessageId       String?
-  timestamp             DateTime
-  status                String   @default("pending") // pending | sent | delivered | read | failed
-  error                 String?
-  
+  id              String   @id @default(uuid())
+  externalId      String   @unique // wa_message_id
+  direction       MessageDirection
+  type            MessageType
+  from            String
+  to              String
+  chatId          String
+  content         String?
+  mediaUrl        String?
+  mediaMimeType   String?
+  mediaFileName   String?
+  mediaFileSize   Int?
+  mediaDuration   Int?
+  isGroup         Boolean  @default(false)
+  quotedMessageId String?
+  timestamp       DateTime
+  status          MessageStatus   @default(PENDING)
+  error           String?
+
   // Chatwoot refs
   chatwootConversationId Int?
   chatwootMessageId      Int?
   chatwootContactId      Int?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -43,14 +68,14 @@ model Message {
 }
 
 model Contact {
-  id            String   @id
-  phoneNumber   String   @unique
-  name          String?
-  pushName      String?
+  id             String  @id
+  phoneNumber    String  @unique
+  name           String?
+  pushName       String?
   profilePicture String?
-  isBusiness    Boolean  @default(false)
-  labels        String?  // JSON array
-  
+  isBusiness     Boolean @default(false)
+  labels         String? // JSON array
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -1,8 +1,6 @@
-import { PrismaClient, Prisma } from '../../../generated/prisma/client';
-import { Contact } from '~/domain/entities/Contact.js';
-import { logger } from '~/logger.js';
+import type { Contact, Prisma, PrismaClient } from "~/prisma/client";
 
-export class PrismaContactRepository {
+export class ContactRepository {
   constructor(private prisma: PrismaClient) {}
 
   async save(contact: Contact): Promise<void> {

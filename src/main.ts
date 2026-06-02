@@ -8,6 +8,7 @@ import { PrismaMessageRepository } from './infrastructure/database/PrismaMessage
 import { MediaStorageProcessor } from './infrastructure/storage/MediaStorage.js'
 import { buildServer } from './interface/http/server.js'
 import { logger } from './logger.js'
+import { MessageRepository } from './repositories/messageRepository.js'
 import 'dotenv/config'
 
 async function main() {
@@ -22,13 +23,6 @@ async function main() {
   const chatwoot = new ChatwootAdapter()
   const mediaProcessor = new MediaStorageProcessor()
 
-  // Use Cases
-  const processIncoming = new ProcessIncomingMessageUseCase(
-    messageRepo,
-    contactRepo,
-    chatwoot,
-    mediaProcessor,
-  )
   const processOutgoing = new ProcessOutgoingMessageUseCase(
     messageRepo,
     baileys,
@@ -37,7 +31,7 @@ async function main() {
 
   // Configurar handlers do Baileys
   baileys.onMessage(async (message) => {
-    await processIncoming.execute(message)
+    await MessageRepository.processIncoming(message)
   })
 
   baileys.onConnectionUpdate((state) => {
