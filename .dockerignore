@@ -24,8 +24,11 @@ data
 
 # Docker
 Dockerfile
+Dockerfile.dev
 docker-compose.yml
+docker-compose.dev.yml
 .dockerignore
+docker-entrypoint.dev.sh
 
 # IDE
 .vscode
