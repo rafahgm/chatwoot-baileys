@@ -1,90 +1,86 @@
 import type { RedisClientType } from 'redis'
-import type { ICacheRepository } from '../../domain/repositories/ICacheRepository.js'
 import { createClient } from 'redis'
-import { logger } from '../../config/logger.js'
+import { logger } from './logger.js'
 
-export class RedisCacheRepository implements ICacheRepository {
-  private client: RedisClientType
+export type CacheClient = RedisClientType
 
-  constructor(url?: string) {
-    this.client = createClient({
-      url: url || process.env.REDIS_URL || 'redis://localhost:6379',
-      socket: {
-        reconnectStrategy: retries => Math.min(retries * 50, 500),
-      },
-    })
+export async function createCache(url?: string): Promise<CacheClient> {
+  const client = createClient({
+    url: url || process.env.REDIS_URL || 'redis://localhost:6379',
+    socket: {
+      reconnectStrategy: retries => Math.min(retries * 50, 500),
+    },
+  })
 
-    this.client.on('error', err => logger.error({ err }, 'Redis error'))
-    this.client.on('connect', () => logger.info('Redis conectado'))
+  client.on('error', err => logger.error({ err }, 'Redis error'))
+  client.on('connect', () => logger.info('Redis conectado'))
+
+  await client.connect()
+  return client
+}
+
+export async function disconnectCache(client: CacheClient): Promise<void> {
+  await client.quit()
+}
+
+export async function set(client: CacheClient, key: string, value: string, ttlSeconds?: number): Promise<void> {
+  if (ttlSeconds) {
+    await client.setEx(key, ttlSeconds, value)
   }
-
-  async connect(): Promise<void> {
-    await this.client.connect()
+  else {
+    await client.set(key, value)
   }
+}
 
-  async disconnect(): Promise<void> {
-    await this.client.quit()
-  }
+export async function get(client: CacheClient, key: string): Promise<string | null> {
+  return client.get(key)
+}
 
-  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-    if (ttlSeconds) {
-      await this.client.setEx(key, ttlSeconds, value)
-    }
-    else {
-      await this.client.set(key, value)
-    }
-  }
+export async function getAndDelete(client: CacheClient, key: string): Promise<string | null> {
+  const value = await client.get(key)
+  if (value)
+    await client.del(key)
+  return value
+}
 
-  async get(key: string): Promise<string | null> {
-    return this.client.get(key)
-  }
+export async function del(client: CacheClient, key: string): Promise<void> {
+  await client.del(key)
+}
 
-  async getAndDelete(key: string): Promise<string | null> {
-    const value = await this.client.get(key)
-    if (value)
-      await this.client.del(key)
-    return value
-  }
+export async function exists(client: CacheClient, key: string): Promise<boolean> {
+  return (await client.exists(key)) === 1
+}
 
-  async delete(key: string): Promise<void> {
-    await this.client.del(key)
-  }
+export async function increment(client: CacheClient, key: string, amount = 1): Promise<number> {
+  return client.incrBy(key, amount)
+}
 
-  async exists(key: string): Promise<boolean> {
-    return (await this.client.exists(key)) === 1
-  }
+export async function expire(client: CacheClient, key: string, ttlSeconds: number): Promise<void> {
+  await client.expire(key, ttlSeconds)
+}
 
-  async increment(key: string, amount = 1): Promise<number> {
-    return this.client.incrBy(key, amount)
-  }
+export async function mget(client: CacheClient, keys: string[]): Promise<(string | null)[]> {
+  return client.mGet(keys)
+}
 
-  async expire(key: string, ttlSeconds: number): Promise<void> {
-    await this.client.expire(key, ttlSeconds)
-  }
+export async function mset(client: CacheClient, entries: Record<string, string>): Promise<void> {
+  const args = Object.entries(entries).flat()
+  await client.mSet(args as [string, string, ...string[]])
+}
 
-  async mget(keys: string[]): Promise<(string | null)[]> {
-    return this.client.mGet(keys)
+export async function clearPrefix(client: CacheClient, prefix: string): Promise<void> {
+  const keys = await client.keys(`${prefix}*`)
+  if (keys.length > 0) {
+    await client.del(keys)
   }
+}
 
-  async mset(entries: Record<string, string>): Promise<void> {
-    const args = Object.entries(entries).flat()
-    await this.client.mSet(args as [string, string, ...string[]])
-  }
+export async function publish(client: CacheClient, channel: string, message: string): Promise<void> {
+  await client.publish(channel, message)
+}
 
-  async clearPrefix(prefix: string): Promise<void> {
-    const keys = await this.client.keys(`${prefix}*`)
-    if (keys.length > 0) {
-      await this.client.del(keys)
-    }
-  }
-
-  async publish(channel: string, message: string): Promise<void> {
-    await this.client.publish(channel, message)
-  }
-
-  async subscribe(channel: string, handler: (message: string) => void): Promise<void> {
-    const subscriber = this.client.duplicate()
-    await subscriber.connect()
-    await subscriber.subscribe(channel, message => handler(message))
-  }
+export async function subscribe(client: CacheClient, channel: string, handler: (message: string) => void): Promise<void> {
+  const subscriber = client.duplicate()
+  await subscriber.connect()
+  await subscriber.subscribe(channel, message => handler(message))
 }

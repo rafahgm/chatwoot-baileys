@@ -45,8 +45,8 @@ export type MessageSumAggregateOutputType = {
 export type MessageMinAggregateOutputType = {
   id: string | null
   externalId: string | null
-  direction: string | null
-  type: string | null
+  direction: $Enums.MessageDirection | null
+  type: $Enums.MessageType | null
   from: string | null
   to: string | null
   chatId: string | null
@@ -59,7 +59,7 @@ export type MessageMinAggregateOutputType = {
   isGroup: boolean | null
   quotedMessageId: string | null
   timestamp: Date | null
-  status: string | null
+  status: $Enums.MessageStatus | null
   error: string | null
   chatwootConversationId: number | null
   chatwootMessageId: number | null
@@ -71,8 +71,8 @@ export type MessageMinAggregateOutputType = {
 export type MessageMaxAggregateOutputType = {
   id: string | null
   externalId: string | null
-  direction: string | null
-  type: string | null
+  direction: $Enums.MessageDirection | null
+  type: $Enums.MessageType | null
   from: string | null
   to: string | null
   chatId: string | null
@@ -85,7 +85,7 @@ export type MessageMaxAggregateOutputType = {
   isGroup: boolean | null
   quotedMessageId: string | null
   timestamp: Date | null
-  status: string | null
+  status: $Enums.MessageStatus | null
   error: string | null
   chatwootConversationId: number | null
   chatwootMessageId: number | null
@@ -306,8 +306,8 @@ export type MessageGroupByArgs<ExtArgs extends runtime.Types.Extensions.Internal
 export type MessageGroupByOutputType = {
   id: string
   externalId: string
-  direction: string
-  type: string
+  direction: $Enums.MessageDirection
+  type: $Enums.MessageType
   from: string
   to: string
   chatId: string
@@ -320,7 +320,7 @@ export type MessageGroupByOutputType = {
   isGroup: boolean
   quotedMessageId: string | null
   timestamp: Date
-  status: string
+  status: $Enums.MessageStatus
   error: string | null
   chatwootConversationId: number | null
   chatwootMessageId: number | null
@@ -355,8 +355,8 @@ export type MessageWhereInput = {
   NOT?: Prisma.MessageWhereInput | Prisma.MessageWhereInput[]
   id?: Prisma.StringFilter<"Message"> | string
   externalId?: Prisma.StringFilter<"Message"> | string
-  direction?: Prisma.StringFilter<"Message"> | string
-  type?: Prisma.StringFilter<"Message"> | string
+  direction?: Prisma.EnumMessageDirectionFilter<"Message"> | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeFilter<"Message"> | $Enums.MessageType
   from?: Prisma.StringFilter<"Message"> | string
   to?: Prisma.StringFilter<"Message"> | string
   chatId?: Prisma.StringFilter<"Message"> | string
@@ -369,7 +369,7 @@ export type MessageWhereInput = {
   isGroup?: Prisma.BoolFilter<"Message"> | boolean
   quotedMessageId?: Prisma.StringNullableFilter<"Message"> | string | null
   timestamp?: Prisma.DateTimeFilter<"Message"> | Date | string
-  status?: Prisma.StringFilter<"Message"> | string
+  status?: Prisma.EnumMessageStatusFilter<"Message"> | $Enums.MessageStatus
   error?: Prisma.StringNullableFilter<"Message"> | string | null
   chatwootConversationId?: Prisma.IntNullableFilter<"Message"> | number | null
   chatwootMessageId?: Prisma.IntNullableFilter<"Message"> | number | null
@@ -410,8 +410,8 @@ export type MessageWhereUniqueInput = Prisma.AtLeast<{
   AND?: Prisma.MessageWhereInput | Prisma.MessageWhereInput[]
   OR?: Prisma.MessageWhereInput[]
   NOT?: Prisma.MessageWhereInput | Prisma.MessageWhereInput[]
-  direction?: Prisma.StringFilter<"Message"> | string
-  type?: Prisma.StringFilter<"Message"> | string
+  direction?: Prisma.EnumMessageDirectionFilter<"Message"> | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeFilter<"Message"> | $Enums.MessageType
   from?: Prisma.StringFilter<"Message"> | string
   to?: Prisma.StringFilter<"Message"> | string
   chatId?: Prisma.StringFilter<"Message"> | string
@@ -424,7 +424,7 @@ export type MessageWhereUniqueInput = Prisma.AtLeast<{
   isGroup?: Prisma.BoolFilter<"Message"> | boolean
   quotedMessageId?: Prisma.StringNullableFilter<"Message"> | string | null
   timestamp?: Prisma.DateTimeFilter<"Message"> | Date | string
-  status?: Prisma.StringFilter<"Message"> | string
+  status?: Prisma.EnumMessageStatusFilter<"Message"> | $Enums.MessageStatus
   error?: Prisma.StringNullableFilter<"Message"> | string | null
   chatwootConversationId?: Prisma.IntNullableFilter<"Message"> | number | null
   chatwootMessageId?: Prisma.IntNullableFilter<"Message"> | number | null
@@ -470,8 +470,8 @@ export type MessageScalarWhereWithAggregatesInput = {
   NOT?: Prisma.MessageScalarWhereWithAggregatesInput | Prisma.MessageScalarWhereWithAggregatesInput[]
   id?: Prisma.StringWithAggregatesFilter<"Message"> | string
   externalId?: Prisma.StringWithAggregatesFilter<"Message"> | string
-  direction?: Prisma.StringWithAggregatesFilter<"Message"> | string
-  type?: Prisma.StringWithAggregatesFilter<"Message"> | string
+  direction?: Prisma.EnumMessageDirectionWithAggregatesFilter<"Message"> | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeWithAggregatesFilter<"Message"> | $Enums.MessageType
   from?: Prisma.StringWithAggregatesFilter<"Message"> | string
   to?: Prisma.StringWithAggregatesFilter<"Message"> | string
   chatId?: Prisma.StringWithAggregatesFilter<"Message"> | string
@@ -484,7 +484,7 @@ export type MessageScalarWhereWithAggregatesInput = {
   isGroup?: Prisma.BoolWithAggregatesFilter<"Message"> | boolean
   quotedMessageId?: Prisma.StringNullableWithAggregatesFilter<"Message"> | string | null
   timestamp?: Prisma.DateTimeWithAggregatesFilter<"Message"> | Date | string
-  status?: Prisma.StringWithAggregatesFilter<"Message"> | string
+  status?: Prisma.EnumMessageStatusWithAggregatesFilter<"Message"> | $Enums.MessageStatus
   error?: Prisma.StringNullableWithAggregatesFilter<"Message"> | string | null
   chatwootConversationId?: Prisma.IntNullableWithAggregatesFilter<"Message"> | number | null
   chatwootMessageId?: Prisma.IntNullableWithAggregatesFilter<"Message"> | number | null
@@ -496,8 +496,8 @@ export type MessageScalarWhereWithAggregatesInput = {
 export type MessageCreateInput = {
   id?: string
   externalId: string
-  direction: string
-  type: string
+  direction: $Enums.MessageDirection
+  type: $Enums.MessageType
   from: string
   to: string
   chatId: string
@@ -510,7 +510,7 @@ export type MessageCreateInput = {
   isGroup?: boolean
   quotedMessageId?: string | null
   timestamp: Date | string
-  status?: string
+  status?: $Enums.MessageStatus
   error?: string | null
   chatwootConversationId?: number | null
   chatwootMessageId?: number | null
@@ -522,8 +522,8 @@ export type MessageCreateInput = {
 export type MessageUncheckedCreateInput = {
   id?: string
   externalId: string
-  direction: string
-  type: string
+  direction: $Enums.MessageDirection
+  type: $Enums.MessageType
   from: string
   to: string
   chatId: string
@@ -536,7 +536,7 @@ export type MessageUncheckedCreateInput = {
   isGroup?: boolean
   quotedMessageId?: string | null
   timestamp: Date | string
-  status?: string
+  status?: $Enums.MessageStatus
   error?: string | null
   chatwootConversationId?: number | null
   chatwootMessageId?: number | null
@@ -548,8 +548,8 @@ export type MessageUncheckedCreateInput = {
 export type MessageUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   externalId?: Prisma.StringFieldUpdateOperationsInput | string
-  direction?: Prisma.StringFieldUpdateOperationsInput | string
-  type?: Prisma.StringFieldUpdateOperationsInput | string
+  direction?: Prisma.EnumMessageDirectionFieldUpdateOperationsInput | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeFieldUpdateOperationsInput | $Enums.MessageType
   from?: Prisma.StringFieldUpdateOperationsInput | string
   to?: Prisma.StringFieldUpdateOperationsInput | string
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -562,7 +562,7 @@ export type MessageUpdateInput = {
   isGroup?: Prisma.BoolFieldUpdateOperationsInput | boolean
   quotedMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumMessageStatusFieldUpdateOperationsInput | $Enums.MessageStatus
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatwootConversationId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatwootMessageId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -574,8 +574,8 @@ export type MessageUpdateInput = {
 export type MessageUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   externalId?: Prisma.StringFieldUpdateOperationsInput | string
-  direction?: Prisma.StringFieldUpdateOperationsInput | string
-  type?: Prisma.StringFieldUpdateOperationsInput | string
+  direction?: Prisma.EnumMessageDirectionFieldUpdateOperationsInput | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeFieldUpdateOperationsInput | $Enums.MessageType
   from?: Prisma.StringFieldUpdateOperationsInput | string
   to?: Prisma.StringFieldUpdateOperationsInput | string
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -588,7 +588,7 @@ export type MessageUncheckedUpdateInput = {
   isGroup?: Prisma.BoolFieldUpdateOperationsInput | boolean
   quotedMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumMessageStatusFieldUpdateOperationsInput | $Enums.MessageStatus
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatwootConversationId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatwootMessageId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -600,8 +600,8 @@ export type MessageUncheckedUpdateInput = {
 export type MessageCreateManyInput = {
   id?: string
   externalId: string
-  direction: string
-  type: string
+  direction: $Enums.MessageDirection
+  type: $Enums.MessageType
   from: string
   to: string
   chatId: string
@@ -614,7 +614,7 @@ export type MessageCreateManyInput = {
   isGroup?: boolean
   quotedMessageId?: string | null
   timestamp: Date | string
-  status?: string
+  status?: $Enums.MessageStatus
   error?: string | null
   chatwootConversationId?: number | null
   chatwootMessageId?: number | null
@@ -626,8 +626,8 @@ export type MessageCreateManyInput = {
 export type MessageUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   externalId?: Prisma.StringFieldUpdateOperationsInput | string
-  direction?: Prisma.StringFieldUpdateOperationsInput | string
-  type?: Prisma.StringFieldUpdateOperationsInput | string
+  direction?: Prisma.EnumMessageDirectionFieldUpdateOperationsInput | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeFieldUpdateOperationsInput | $Enums.MessageType
   from?: Prisma.StringFieldUpdateOperationsInput | string
   to?: Prisma.StringFieldUpdateOperationsInput | string
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -640,7 +640,7 @@ export type MessageUpdateManyMutationInput = {
   isGroup?: Prisma.BoolFieldUpdateOperationsInput | boolean
   quotedMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumMessageStatusFieldUpdateOperationsInput | $Enums.MessageStatus
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatwootConversationId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatwootMessageId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -652,8 +652,8 @@ export type MessageUpdateManyMutationInput = {
 export type MessageUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   externalId?: Prisma.StringFieldUpdateOperationsInput | string
-  direction?: Prisma.StringFieldUpdateOperationsInput | string
-  type?: Prisma.StringFieldUpdateOperationsInput | string
+  direction?: Prisma.EnumMessageDirectionFieldUpdateOperationsInput | $Enums.MessageDirection
+  type?: Prisma.EnumMessageTypeFieldUpdateOperationsInput | $Enums.MessageType
   from?: Prisma.StringFieldUpdateOperationsInput | string
   to?: Prisma.StringFieldUpdateOperationsInput | string
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -666,7 +666,7 @@ export type MessageUncheckedUpdateManyInput = {
   isGroup?: Prisma.BoolFieldUpdateOperationsInput | boolean
   quotedMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timestamp?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumMessageStatusFieldUpdateOperationsInput | $Enums.MessageStatus
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatwootConversationId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatwootMessageId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -773,6 +773,14 @@ export type StringFieldUpdateOperationsInput = {
   set?: string
 }
 
+export type EnumMessageDirectionFieldUpdateOperationsInput = {
+  set?: $Enums.MessageDirection
+}
+
+export type EnumMessageTypeFieldUpdateOperationsInput = {
+  set?: $Enums.MessageType
+}
+
 export type NullableStringFieldUpdateOperationsInput = {
   set?: string | null
 }
@@ -791,6 +799,10 @@ export type BoolFieldUpdateOperationsInput = {
 
 export type DateTimeFieldUpdateOperationsInput = {
   set?: Date | string
+}
+
+export type EnumMessageStatusFieldUpdateOperationsInput = {
+  set?: $Enums.MessageStatus
 }
 
 
@@ -907,8 +919,8 @@ export type $MessagePayload<ExtArgs extends runtime.Types.Extensions.InternalArg
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     externalId: string
-    direction: string
-    type: string
+    direction: $Enums.MessageDirection
+    type: $Enums.MessageType
     from: string
     to: string
     chatId: string
@@ -921,7 +933,7 @@ export type $MessagePayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     isGroup: boolean
     quotedMessageId: string | null
     timestamp: Date
-    status: string
+    status: $Enums.MessageStatus
     error: string | null
     chatwootConversationId: number | null
     chatwootMessageId: number | null
@@ -1353,8 +1365,8 @@ export interface Prisma__MessageClient<T, Null = never, ExtArgs extends runtime.
 export interface MessageFieldRefs {
   readonly id: Prisma.FieldRef<"Message", 'String'>
   readonly externalId: Prisma.FieldRef<"Message", 'String'>
-  readonly direction: Prisma.FieldRef<"Message", 'String'>
-  readonly type: Prisma.FieldRef<"Message", 'String'>
+  readonly direction: Prisma.FieldRef<"Message", 'MessageDirection'>
+  readonly type: Prisma.FieldRef<"Message", 'MessageType'>
   readonly from: Prisma.FieldRef<"Message", 'String'>
   readonly to: Prisma.FieldRef<"Message", 'String'>
   readonly chatId: Prisma.FieldRef<"Message", 'String'>
@@ -1367,7 +1379,7 @@ export interface MessageFieldRefs {
   readonly isGroup: Prisma.FieldRef<"Message", 'Boolean'>
   readonly quotedMessageId: Prisma.FieldRef<"Message", 'String'>
   readonly timestamp: Prisma.FieldRef<"Message", 'DateTime'>
-  readonly status: Prisma.FieldRef<"Message", 'String'>
+  readonly status: Prisma.FieldRef<"Message", 'MessageStatus'>
   readonly error: Prisma.FieldRef<"Message", 'String'>
   readonly chatwootConversationId: Prisma.FieldRef<"Message", 'Int'>
   readonly chatwootMessageId: Prisma.FieldRef<"Message", 'Int'>

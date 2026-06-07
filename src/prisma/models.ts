@@ -10,4 +10,5 @@
  */
 export type * from './models/Message'
 export type * from './models/Contact'
+export type * from './models/Credential'
 export type * from './commonInputTypes'

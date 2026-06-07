@@ -1,12 +1,25 @@
-import { PrismaClient } from '@prisma/client'
-import { ProcessIncomingMessageUseCase } from './application/usecases/ProcessIncomingMessage.js'
+import { connect, createState } from './baileys'
+import { generateClient } from './database'
+import { logger } from './logger'
+import 'dotenv/config'
+
+async function main() {
+  const prisma = generateClient()
+  const baileysState = createState(prisma)
+  await connect(baileysState)
+}
+
+main().catch((error) => {
+  logger.fatal(error, 'Falha na inicialização')
+  process.exit(1)
+})
+/* import { PrismaClient } from '@prisma/client'
+import { buildServer } from '~/http/server.js'
+import { MediaStorageProcessor } from '~/storage.js'
 import { ProcessOutgoingMessageUseCase } from './application/usecases/ProcessOutgoingMessage.js'
 import { BaileysAdapter } from './infrastructure/baileys/BaileysAdapter.js'
 import { ChatwootAdapter } from './infrastructure/chatwoot/ChatwootAdapter.js'
 import { PrismaContactRepository } from './infrastructure/database/PrismaContactRepository.js'
-import { PrismaMessageRepository } from './infrastructure/database/PrismaMessageRepository.js'
-import { MediaStorageProcessor } from './infrastructure/storage/MediaStorage.js'
-import { buildServer } from './interface/http/server.js'
 import { logger } from './logger.js'
 import { MessageRepository } from './repositories/messageRepository.js'
 import 'dotenv/config'
@@ -61,3 +74,4 @@ main().catch((error) => {
   logger.fatal(error, 'Falha na inicialização')
   process.exit(1)
 })
+ */

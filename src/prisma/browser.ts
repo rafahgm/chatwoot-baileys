@@ -27,3 +27,8 @@ export type Message = Prisma.MessageModel
  * 
  */
 export type Contact = Prisma.ContactModel
+/**
+ * Model Credential
+ * 
+ */
+export type Credential = Prisma.CredentialModel

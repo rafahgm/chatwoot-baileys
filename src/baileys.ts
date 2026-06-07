@@ -1,380 +1,524 @@
 import type { Boom } from '@hapi/boom'
-import type { WAMessage } from '@whiskeysockets/baileys'
+import type { AnyMessageContent, WAMessage } from '@whiskeysockets/baileys'
 import type { Buffer } from 'node:buffer'
-import type { Contact } from '~/domain/entities/Contact.js'
-import type { MediaMetadata, Message } from '~/domain/entities/Message.js'
-import { rmSync } from 'node:fs'
+import type { Contact, Message, PrismaClient } from '~/prisma/client'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { DisconnectReason, downloadMediaMessage, fetchLatestBaileysVersion, isJidBroadcast, makeCacheableSignalKeyStore, makeWASocket, proto, useMultiFileAuthState } from '@whiskeysockets/baileys'
+import {
+  DisconnectReason,
+  downloadMediaMessage,
+  fetchLatestBaileysVersion,
+  isJidBroadcast,
+  makeCacheableSignalKeyStore,
+  makeWASocket,
+  proto,
+} from '@whiskeysockets/baileys'
 import NodeCache from 'node-cache'
 import qrcode from 'qrcode-terminal'
-import { MessageDirection, MessageType } from '~/domain/entities/Message.js'
+import { clearAuthState, useDatabaseAuthState } from '~/auth-state.js'
 import { logger } from '~/logger.js'
+import { MessageDirection, MessageStatus, MessageType } from '~/prisma/enums'
 
-export class BaileysAdapter {
-  private sock: ReturnType<typeof makeWASocket> | null = null
-  private authState: any
-  private msgRetryCounterCache = new NodeCache({ stdTTL: 10, checkperiod: 120 })
-  private connectionState = { connected: false, qr: undefined as string | undefined }
-  private isConnecting = false
+export interface MediaMetadata {
+  mimeType: string
+  fileName?: string
+  fileSize?: number
+  duration?: number
+  caption?: string
+  url?: string
+  buffer?: Buffer
+}
 
-  // Handlers
-  private connectionHandlers: Array<(state: any) => void> = []
-  private messageHandlers: Array<(msg: Message) => Promise<void>> = []
-  private contactHandlers: Array<(contact: Contact) => void> = []
+type BaileysMessage = Message & { media?: MediaMetadata }
 
-  constructor(private authDir: string) {}
+export interface BaileysState {
+  prisma: PrismaClient
+  sock: ReturnType<typeof makeWASocket> | null
+  authState: Awaited<ReturnType<typeof useDatabaseAuthState>>['state'] | null
+  saveCreds: Awaited<ReturnType<typeof useDatabaseAuthState>>['saveCreds'] | null
+  msgRetryCounterCache: NodeCache
+  connectionState: { connected: boolean, qr?: string }
+  isConnecting: boolean
+  connectionHandlers: Array<(state: { connected: boolean, qr?: string }) => void>
+  messageHandlers: Array<(msg: BaileysMessage) => Promise<void>>
+  contactHandlers: Array<(contact: Contact) => void>
+}
 
-  async connect(): Promise<void> {
-    if (this.isConnecting || this.connectionState.connected) {
-      logger.warn('Conexão já em andamento ou estabelecida. Ignorando chamada.')
-      return
-    }
-    this.isConnecting = true
+interface BaileysContactUpsert {
+  id: string
+  name?: string
+  notify?: string
+}
 
-    try {
-      const { state, saveCreds } = await useMultiFileAuthState(this.authDir)
-      const { version, isLatest } = await fetchLatestBaileysVersion()
-
-      logger.info(`Usando Baileys v${version.join('.')}, latest: ${isLatest}`)
-
-      this.authState = state
-
-      this.sock = makeWASocket({
-        version,
-        logger: logger.child({ module: 'baileys' }),
-        auth: {
-          creds: state.creds,
-          keys: makeCacheableSignalKeyStore(state.keys, logger.child({ module: 'baileys-keys' })),
-        },
-        msgRetryCounterCache: this.msgRetryCounterCache,
-        generateHighQualityLinkPreview: true,
-        syncFullHistory: false,
-        markOnlineOnConnect: true,
-        keepAliveIntervalMs: 30_000,
-        shouldIgnoreJid: jid => isJidBroadcast(jid),
-        getMessage: async (_key) => {
-          return proto.Message.fromObject({})
-        },
-      })
-
-      this.sock.ev.on('creds.update', saveCreds)
-
-      this.sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update
-
-        if (qr) {
-          this.connectionState.qr = qr
-          qrcode.generate(qr, { small: true })
-          logger.info('QR Code gerado. Escaneie com seu Whatsapp.')
-        }
-
-        if (connection === 'close') {
-          const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut
-
-          logger.error({
-            error: lastDisconnect?.error,
-            shouldReconnect,
-          }, 'Conexão fechada')
-
-          this.connectionState.connected = false
-          this.connectionHandlers.forEach(h => h({ connected: false }))
-
-          // Sempre limpa o socket antigo para evitar vazamento de listeners
-          this.sock?.end(undefined)
-          this.sock = null
-
-          if (statusCode === DisconnectReason.loggedOut) {
-            logger.warn('Sessão inválida ou encerrada (401). Apagando credenciais para nova autenticação...')
-            try {
-              rmSync(this.authDir, { recursive: true, force: true })
-              logger.info('Credenciais locais apagadas. Escaneie o QR code novamente.')
-            }
-            catch (err) {
-              logger.error(err, 'Erro ao apagar credenciais locais')
-            }
-
-            setTimeout(() => {
-              this.connect().catch(err => logger.error(err, 'Erro ao iniciar nova sessão'))
-            }, 1000)
-          }
-          else if (shouldReconnect) {
-            const delay = statusCode === DisconnectReason.restartRequired ? 2000 : 5000
-            logger.info(`Conexão encerrada pelo servidor (${statusCode}). Tentando reconectar em ${delay}ms...`)
-            setTimeout(() => {
-              this.connect().catch(err => logger.error(err, 'Erro ao reconectar'))
-            }, delay)
-          }
-        }
-        else if (connection === 'open') {
-          this.connectionState.connected = true
-          this.connectionState.qr = undefined
-          logger.info('Conectado ao Whatsapp Web')
-          this.connectionHandlers.forEach(h => h({ connected: true }))
-        }
-      })
-
-      // Eventos de mensagens
-      this.sock.ev.on('messages.upsert', async (m) => {
-        if (m.type !== 'notify')
-          return
-
-        for (const waMsg of m.messages) {
-        // Ignorar mensagens enviadas por nós mesmos
-          if (waMsg.key.fromMe)
-            continue
-
-          try {
-            const message = await this.parseWAMessage(waMsg)
-            if (message) {
-              await Promise.all(this.messageHandlers.map(h => h(message)))
-            }
-          }
-          catch (error) {
-            logger.error({ error, waMsg }, 'Erro ao processar mensagem do WhatsApp')
-          }
-        }
-      })
-
-      // evento de contatos
-      this.sock.ev.on('contacts.upsert', (contacts) => {
-        for (const c of contacts) {
-          const contact: Contact = {
-            id: c.id,
-            phoneNumber: c.id.split('@')[0],
-            pushName: c.name || c.notify,
-            name: c.name,
-          }
-          this.connectionHandlers.forEach(h => h(contact))
-        }
-      })
-    }
-    finally {
-      this.isConnecting = false
-    }
+export function createState(prisma: PrismaClient): BaileysState {
+  return {
+    prisma,
+    sock: null,
+    authState: null,
+    saveCreds: null,
+    msgRetryCounterCache: new NodeCache({ stdTTL: 10, checkperiod: 120 }),
+    connectionState: { connected: false, qr: undefined },
+    isConnecting: false,
+    connectionHandlers: [],
+    messageHandlers: [],
+    contactHandlers: [],
   }
+}
 
-  async disconnect(): Promise<void> {
-    await this.sock?.logout()
-    this.sock = null
-    this.connectionState.connected = false
+export function resolveReconnectStrategy(statusCode: number | undefined): { shouldReconnect: boolean, delay: number, reason: string } {
+  if (statusCode === DisconnectReason.loggedOut) {
+    return { shouldReconnect: false, delay: 1000, reason: 'loggedOut' }
   }
-
-  isConnected(): boolean {
-    return this.connectionState.connected
+  if (statusCode === DisconnectReason.restartRequired) {
+    return { shouldReconnect: true, delay: 2000, reason: 'restartRequired' }
   }
+  return { shouldReconnect: true, delay: 5000, reason: 'connectionClosed' }
+}
 
-  async sendTextMessage(to: string, text: string, options?: { quoted?: WAMessage }): Promise<string> {
-    if (!this.sock)
-      throw new Error('Socket não conectado')
-
-    const result = await this.sock.sendMessage(to, { text }, { quoted: options?.quoted })
-
-    if (!result)
-      throw new Error('Não foi possível enviar a mensagem')
-    if (!result.key.id)
-      throw new Error('Houve um erro ao enviar a mensagem')
-
-    return result.key.id
+export function buildConnectionState(update: Partial<BaileysState['connectionState']>): BaileysState['connectionState'] {
+  return {
+    connected: update.connected ?? false,
+    qr: update.qr,
   }
+}
 
-  async sendMediaMessage(
-    to: string,
-    type: 'image' | 'video' | 'audio' | 'document',
-    media: { buffer?: Buffer, url?: string, stream?: ReadableStream },
-    options?: { caption?: string, ptt?: boolean, fileName?: string, mimeType?: string },
-  ): Promise<string> {
-    if (!this.sock)
-      throw new Error('Socket não conectado')
-
-    const messageContent: any = {}
-
-    if (media.buffer) {
-      messageContent[type] = media.buffer
-    }
-    else if (media.url) {
-      messageContent[type] = { url: media.url }
-    }
-
-    if (type === 'audio' && options?.ptt) {
-      messageContent.ptt = true
-      messageContent.mimeType = options.mimeType || 'audio/ogg; codecs=opus'
-    }
-    else if (options?.caption && type !== 'audio') {
-      messageContent.caption = options.caption
-    }
-
-    if (options?.fileName && type === 'document') {
-      messageContent.fileName = options.fileName
-    }
-
-    if (options?.mimeType) {
-      messageContent.mimeType = options.mimeType
-    }
-
-    const result = await this.sock.sendMessage(to, messageContent)
-    return result!.key.id!
+export function determineMessageType(msgContent: proto.IMessage): MessageType {
+  if (msgContent.conversation || msgContent.extendedTextMessage?.text) {
+    return MessageType.TEXT
   }
-
-  async sendVoiceNote(to: string, audioBuffer: Buffer): Promise<string> {
-    return this.sendMediaMessage(to, 'audio', { buffer: audioBuffer }, {
-      ptt: true,
-      mimeType: 'audio/ogg; codecs=opus',
-    })
+  if (msgContent.imageMessage)
+    return MessageType.IMAGE
+  if (msgContent.videoMessage)
+    return MessageType.VIDEO
+  if (msgContent.audioMessage) {
+    return msgContent.audioMessage.ptt ? MessageType.VOICE : MessageType.AUDIO
   }
+  if (msgContent.documentMessage)
+    return MessageType.DOCUMENT
+  if (msgContent.stickerMessage)
+    return MessageType.STICKER
+  if (msgContent.locationMessage)
+    return MessageType.LOCATION
+  if (msgContent.contactMessage || msgContent.contactsArrayMessage)
+    return MessageType.CONTACT
+  return MessageType.UNKNOWN
+}
 
-  private async parseWAMessage(waMsg: WAMessage): Promise<Message | null> {
-    const msgContent = waMsg.message
-    if (!msgContent)
-      return null
+export function extractMessageContent(msgContent: proto.IMessage, type: MessageType): { content?: string, media?: MediaMetadata } {
+  let content: string | undefined
+  let media: MediaMetadata | undefined
 
-    const jid = waMsg.key.remoteJid!
-    const fromMe = waMsg.key.fromMe || false
-    const id = waMsg.key.id!
-    const timestamp = new Date((waMsg.messageTimestamp as number) * 1000)
-
-    let type: MessageType = MessageType.UNKNOWN
-    let content: string | undefined
-    let media: MediaMetadata | undefined
-
-    if (msgContent.conversation || msgContent.extendedTextMessage?.text) {
-      type = MessageType.TEXT
+  switch (type) {
+    case MessageType.TEXT:
       content = msgContent.conversation || msgContent.extendedTextMessage?.text || undefined
-    }
-    else if (msgContent.imageMessage) {
-      type = MessageType.IMAGE
-      content = msgContent.imageMessage.caption || undefined
-      // TODO: Fazer download da media
-    }
-    else if (msgContent.videoMessage) {
-      type = MessageType.VIDEO
-      content = msgContent.videoMessage.caption || undefined
-    }
-    else if (msgContent.audioMessage) {
-      type = msgContent.audioMessage.ptt ? MessageType.VOICE : MessageType.AUDIO
-      // TODO: fazer download da midia
-      if (media) {
-        media.duration = msgContent.audioMessage.seconds || undefined
+      break
+    case MessageType.IMAGE:
+      content = msgContent.imageMessage?.caption || undefined
+      break
+    case MessageType.VIDEO:
+      content = msgContent.videoMessage?.caption || undefined
+      break
+    case MessageType.VOICE:
+      if (msgContent.audioMessage) {
+        media = {
+          duration: msgContent.audioMessage.seconds || undefined,
+          mimeType: msgContent.audioMessage.mimetype ?? 'audio/ogg; codecs=opus',
+        }
       }
-    }
-    else if (msgContent.documentMessage) {
-      type = MessageType.DOCUMENTO
-      content = msgContent.documentMessage.caption || undefined
-      // TODO: Fazer download da midia
-      if (media) {
-        media.fileName = msgContent.documentMessage.title || undefined
+      break
+    case MessageType.AUDIO:
+      if (msgContent.audioMessage) {
+        media = {
+          duration: msgContent.audioMessage.seconds || undefined,
+          mimeType: msgContent.audioMessage.mimetype ?? 'audio/mp4',
+        }
       }
-    }
-    else if (msgContent.stickerMessage) {
-      type = MessageType.STICKER
-      // TODO: Fazer download da midia
-    }
-    else if (msgContent.locationMessage) {
-      type = MessageType.LOCATION
-      content = `Localização ${msgContent.locationMessage.degreesLatitude}, ${msgContent.locationMessage.degreesLatitude}`
-    }
-    else if (msgContent.contactMessage || msgContent.contactsArrayMessage) {
-      type = MessageType.CONTACT
+      break
+    case MessageType.DOCUMENT:
+      content = msgContent.documentMessage?.caption || undefined
+      if (msgContent.documentMessage) {
+        media = {
+          fileName: msgContent.documentMessage.title || undefined,
+          mimeType: msgContent.documentMessage.mimetype ?? 'application/pdf',
+        }
+      }
+      break
+    case MessageType.STICKER:
+      break
+    case MessageType.LOCATION:
+      content = `Localização ${msgContent.locationMessage?.degreesLatitude}, ${msgContent.locationMessage?.degreesLongitude}`
+      break
+    case MessageType.CONTACT:
       content = 'Contato compartilhado'
-    }
-
-    return {
-      id: `${jid}_${id}`,
-      externalId: id,
-      direction: fromMe ? MessageDirection.OUTBOUND : MessageDirection.INBOUND,
-      type,
-      from: fromMe ? 'me' : jid,
-      to: fromMe ? jid : 'me',
-      chatId: jid,
-      content,
-      media,
-      isGroup: jid.endsWith('@g.us'),
-      timestamp,
-      status: 'pending',
-      quotedMessageId: waMsg.message?.extendedTextMessage?.contextInfo?.stanzaId || undefined,
-    }
+      break
   }
 
-  private async downloadMedia(waMsg: WAMessage, type: string): Promise<MediaMetadata | undefined> {
-    const buffer = await downloadMediaMessage(waMsg, 'buffer', {}, {
-      logger: logger.child({ module: 'baileys-download' }),
-      reuploadRequest: this.sock!.updateMediaMessage,
+  return { content, media }
+}
+
+export function buildMessageFromWAMessage(
+  waMsg: WAMessage,
+  parsed: { type: MessageType, content?: string, media?: MediaMetadata },
+): BaileysMessage {
+  const jid = waMsg.key.remoteJid!
+  const fromMe = waMsg.key.fromMe || false
+  const id = waMsg.key.id!
+
+  return {
+    id: `${jid}_${id}`,
+    externalId: id,
+    direction: fromMe ? MessageDirection.OUTGOING : MessageDirection.INCOMING,
+    type: parsed.type,
+    from: fromMe ? 'me' : jid,
+    to: fromMe ? jid : 'me',
+    chatId: jid,
+    content: parsed.content ?? null,
+    mediaUrl: null,
+    mediaMimeType: null,
+    mediaFileName: null,
+    mediaFileSize: null,
+    mediaDuration: null,
+    isGroup: jid.endsWith('@g.us'),
+    timestamp: new Date((waMsg.messageTimestamp as number) * 1000),
+    status: MessageStatus.PENDING,
+    quotedMessageId: waMsg.message?.extendedTextMessage?.contextInfo?.stanzaId ?? null,
+    error: null,
+    chatwootConversationId: null,
+    chatwootMessageId: null,
+    chatwootContactId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    media: parsed.media,
+  } as BaileysMessage
+}
+
+export function parseWAMessage(waMsg: WAMessage): BaileysMessage | null {
+  const msgContent = waMsg.message
+  if (!msgContent)
+    return null
+
+  const type = determineMessageType(msgContent)
+  const { content, media } = extractMessageContent(msgContent, type)
+  return buildMessageFromWAMessage(waMsg, { type, content, media })
+}
+
+export function buildTextMessagePayload(text: string, options?: { quoted?: WAMessage }): { text: string } & { quoted?: WAMessage } {
+  return { text, ...options }
+}
+
+export function buildMediaPayload(
+  type: 'image' | 'video' | 'audio' | 'document',
+  media: { buffer?: Buffer, url?: string, stream?: ReadableStream },
+  options?: { caption?: string, ptt?: boolean, fileName?: string, mimeType?: string },
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {}
+
+  if (media.buffer) {
+    payload[type] = media.buffer
+  }
+  else if (media.url) {
+    payload[type] = { url: media.url }
+  }
+
+  if (type === 'audio' && options?.ptt) {
+    payload.ptt = true
+    payload.mimeType = options.mimeType || 'audio/ogg; codecs=opus'
+  }
+  else if (options?.caption && type !== 'audio') {
+    payload.caption = options.caption
+  }
+
+  if (options?.fileName && type === 'document') {
+    payload.fileName = options.fileName
+  }
+
+  if (options?.mimeType) {
+    payload.mimeType = options.mimeType
+  }
+
+  return payload
+}
+
+export function resolveMimeType(msgContent: proto.IMessage): string {
+  if (msgContent.imageMessage)
+    return msgContent.imageMessage.mimetype || 'image/jpeg'
+  if (msgContent.videoMessage)
+    return msgContent.videoMessage.mimetype || 'video/mp4'
+  if (msgContent.audioMessage)
+    return msgContent.audioMessage.mimetype || 'audio/ogg'
+  if (msgContent.documentMessage)
+    return msgContent.documentMessage.mimetype || 'application/pdf'
+  if (msgContent.stickerMessage)
+    return msgContent.stickerMessage.mimetype || 'image/webp'
+  return 'application/octet-stream'
+}
+
+export function buildFileName(messageId: string, mimeType: string): string {
+  const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin'
+  return `${messageId}.${ext}`
+}
+
+export function buildMediaMetadata(buffer: Buffer, mimeType: string, fileName: string, _filePath: string): MediaMetadata {
+  return {
+    mimeType,
+    fileName,
+    fileSize: buffer.length,
+    url: `${process.env.MEDIA_BASE_URL || ''}/${fileName}`,
+    buffer,
+  }
+}
+
+export function formatPhoneToJid(phone: string): string {
+  const clean = phone.replace(/\D/g, '')
+  return `${clean}@s.whatsapp.net`
+}
+
+export function formatJidToPhone(jid: string): string {
+  return jid.split('@')[0]!.split(':')[0]!
+}
+
+export function buildContactFromUpsert(contact: BaileysContactUpsert): Contact {
+  return {
+    id: contact.id,
+    phoneNumber: contact.id.split('@')[0]!,
+    pushName: contact.name || contact.notify || null,
+    name: contact.name || null,
+    profilePicture: null,
+    isBusiness: false,
+    labels: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+}
+
+export async function connect(state: BaileysState): Promise<void> {
+  if (state.isConnecting || state.connectionState.connected) {
+    logger.warn('Conexão já em andamento ou estabelecida. Ignorando chamada.')
+    return
+  }
+
+  state.isConnecting = true
+
+  try {
+    const { state: authState, saveCreds } = await useDatabaseAuthState(state.prisma)
+    const { version, isLatest } = await fetchLatestBaileysVersion()
+
+    logger.info(`Usando Baileys v${version.join('.')}, latest: ${isLatest}`)
+
+    state.authState = authState
+    state.saveCreds = saveCreds
+
+    state.sock = makeWASocket({
+      version,
+      logger: logger.child({ module: 'baileys' }),
+      auth: {
+        creds: authState.creds,
+        keys: makeCacheableSignalKeyStore(authState.keys, logger.child({ module: 'baileys-keys' })),
+      },
+      msgRetryCounterCache: state.msgRetryCounterCache,
+      generateHighQualityLinkPreview: true,
+      syncFullHistory: false,
+      markOnlineOnConnect: true,
+      keepAliveIntervalMs: 30_000,
+      shouldIgnoreJid: jid => isJidBroadcast(jid),
+      getMessage: async (_key) => {
+        return proto.Message.fromObject({})
+      },
     })
 
-    if (!buffer)
-      return undefined
+    state.sock.ev.on('creds.update', saveCreds)
 
-    let mimeType = 'application/octet-stream'
-    const msgContent = waMsg.message
+    state.sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update
 
-    if (msgContent?.imageMessage)
-      mimeType = msgContent.imageMessage.mimetype || 'image/jpeg'
-    else if (msgContent?.videoMessage)
-      mimeType = msgContent.videoMessage.mimetype || 'video/mp4'
-    else if (msgContent?.audioMessage)
-      mimeType = msgContent.audioMessage.mimetype || 'audio/ogg'
-    else if (msgContent?.documentMessage)
-      mimeType = msgContent.documentMessage.mimetype || 'application/pdf'
-    else if (msgContent?.stickerMessage)
-      mimeType = msgContent.stickerMessage.mimetype || 'image/webp'
+      if (qr) {
+        state.connectionState = buildConnectionState({ connected: state.connectionState.connected, qr })
+        logger.info('QR Code gerado. Escaneie com seu Whatsapp.')
+        qrcode.generate(qr, { small: true })
+      }
 
-    const uploadsDir = process.env.MEDIA_UPLOAD_DIR || './uploads'
-    await mkdir(uploadsDir, { recursive: true })
+      if (connection === 'close') {
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
+        const strategy = resolveReconnectStrategy(statusCode)
 
-    const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin'
-    const fileName = `${waMsg.key.id}_${type}.${ext}`
-    const filePath = join(uploadsDir, fileName)
+        logger.error({
+          error: lastDisconnect?.error,
+          shouldReconnect: strategy.shouldReconnect,
+        }, 'Conexão fechada')
 
-    await writeFile(filePath, buffer)
+        state.connectionState = buildConnectionState({ connected: false })
+        state.connectionHandlers.forEach(h => h({ connected: false }))
 
-    return {
-      mimeType,
-      fileName,
-      fileSize: buffer.length,
-      url: `${process.env.MEDIA_BASE_URL || ''}/${fileName}`,
-      buffer,
-    }
+        state.sock?.end(undefined)
+        state.sock = null
+
+        if (statusCode === DisconnectReason.loggedOut) {
+          logger.warn('Sessão inválida ou encerrada (401). Apagando credenciais para nova autenticação...')
+          try {
+            await clearAuthState(state.prisma)
+            logger.info('Credenciais do banco apagadas. Escaneie o QR code novamente.')
+          }
+          catch (err) {
+            logger.error(err, 'Erro ao apagar credenciais do banco')
+          }
+
+          setTimeout(() => {
+            connect(state).catch(err => logger.error(err, 'Erro ao iniciar nova sessão'))
+          }, strategy.delay)
+        }
+        else if (strategy.shouldReconnect) {
+          logger.info(`Conexão encerrada pelo servidor (${statusCode}). Tentando reconectar em ${strategy.delay}ms...`)
+          setTimeout(() => {
+            connect(state).catch(err => logger.error(err, 'Erro ao reconectar'))
+          }, strategy.delay)
+        }
+      }
+      else if (connection === 'open') {
+        state.connectionState = buildConnectionState({ connected: true })
+        state.connectionState.qr = undefined
+        logger.info('Conectado ao Whatsapp Web')
+        state.connectionHandlers.forEach(h => h({ connected: true }))
+      }
+    })
+
+    state.sock.ev.on('messages.upsert', async (m) => {
+      if (m.type !== 'notify')
+        return
+
+      for (const waMsg of m.messages) {
+        if (waMsg.key.fromMe)
+          continue
+
+        try {
+          const message = parseWAMessage(waMsg)
+          if (message) {
+            await Promise.all(state.messageHandlers.map(h => h(message)))
+          }
+        }
+        catch (error) {
+          logger.error({ error, waMsg }, 'Erro ao processar mensagem do WhatsApp')
+        }
+      }
+    })
+
+    state.sock.ev.on('contacts.upsert', (contacts) => {
+      for (const c of contacts as unknown as BaileysContactUpsert[]) {
+        const contact = buildContactFromUpsert(c)
+        state.contactHandlers.forEach(h => h(contact))
+      }
+    })
   }
-
-  formatPhoneToJid(phone: string) {
-    const clean = phone.replace(/\D/g, '')
-    return `${clean}@s.whatsapp.net`
+  finally {
+    state.isConnecting = false
   }
+}
 
-  formatJidToPhone(jid: string) {
-    return jid.split('@')[0]!.split(':')[0]!
-  }
+export async function disconnect(state: BaileysState): Promise<void> {
+  await state.sock?.logout()
+  state.sock = null
+  state.connectionState = buildConnectionState({ connected: false })
+}
 
-  async getProfilePicture(jid: string): Promise<string | undefined> {
-    try {
-      const result = await this.sock?.profilePictureUrl(jid, 'image')
-      return result || undefined
-    }
-    catch {
-      return undefined
-    }
-  }
+export function isConnected(state: BaileysState): boolean {
+  return state.connectionState.connected
+}
 
-  onMessage(handler: (message: Message) => Promise<void>): () => void {
-    this.messageHandlers.push(handler)
-    return () => {
-      this.messageHandlers = this.messageHandlers.filter(h => h !== handler)
-    }
-  }
+export async function sendTextMessage(
+  state: BaileysState,
+  to: string,
+  text: string,
+  options?: { quoted?: WAMessage },
+): Promise<string> {
+  if (!state.sock)
+    throw new Error('Socket não conectado')
 
-  onConnectionUpdate(handler: (state: { connected: boolean, qr?: string }) => void) {
-    this.connectionHandlers.push(handler)
-    return () => {
-      this.connectionHandlers = this.connectionHandlers.filter(h => h !== handler)
-    }
-  }
+  const payload = buildTextMessagePayload(text, options)
+  const { quoted, ...content } = payload
+  const result = await state.sock.sendMessage(to, content, { quoted })
 
-  onContactUpdate(handler: (contact: Contact) => void) {
-    this.contactHandlers.push(handler)
-    return () => {
-      this.contactHandlers = this.contactHandlers.filter(h => h !== handler)
-    }
+  if (!result)
+    throw new Error('Não foi possível enviar a mensagem')
+  if (!result.key.id)
+    throw new Error('Houve um erro ao enviar a mensagem')
+
+  return result.key.id
+}
+
+export async function sendMediaMessage(
+  state: BaileysState,
+  to: string,
+  type: 'image' | 'video' | 'audio' | 'document',
+  media: { buffer?: Buffer, url?: string, stream?: ReadableStream },
+  options?: { caption?: string, ptt?: boolean, fileName?: string, mimeType?: string },
+): Promise<string> {
+  if (!state.sock)
+    throw new Error('Socket não conectado')
+
+  const messageContent = buildMediaPayload(type, media, options)
+  const result = await state.sock.sendMessage(to, messageContent as AnyMessageContent)
+
+  return result!.key.id!
+}
+
+export async function sendVoiceNote(state: BaileysState, to: string, audioBuffer: Buffer): Promise<string> {
+  return sendMediaMessage(state, to, 'audio', { buffer: audioBuffer }, {
+    ptt: true,
+    mimeType: 'audio/ogg; codecs=opus',
+  })
+}
+
+export async function downloadMedia(state: BaileysState, waMsg: WAMessage, type: string): Promise<MediaMetadata | undefined> {
+  const buffer = await downloadMediaMessage(waMsg, 'buffer', {}, {
+    logger: logger.child({ module: 'baileys-download' }),
+    reuploadRequest: state.sock!.updateMediaMessage,
+  })
+
+  if (!buffer)
+    return undefined
+
+  const mimeType = waMsg.message ? resolveMimeType(waMsg.message) : 'application/octet-stream'
+  const uploadsDir = process.env.MEDIA_UPLOAD_DIR || './uploads'
+  await mkdir(uploadsDir, { recursive: true })
+
+  const fileName = buildFileName(`${waMsg.key.id!}_${type}`, mimeType)
+  const filePath = join(uploadsDir, fileName)
+
+  await writeFile(filePath, buffer)
+
+  return buildMediaMetadata(buffer, mimeType, fileName, filePath)
+}
+
+export async function getProfilePicture(state: BaileysState, jid: string): Promise<string | undefined> {
+  try {
+    const result = await state.sock?.profilePictureUrl(jid, 'image')
+    return result || undefined
   }
+  catch {
+    return undefined
+  }
+}
+
+export function onMessage(state: BaileysState, handler: (message: BaileysMessage) => Promise<void>): () => void {
+  state.messageHandlers.push(handler)
+  return () => {
+    state.messageHandlers = state.messageHandlers.filter(h => h !== handler)
+  }
+}
+
+export function onConnectionUpdate(state: BaileysState, handler: (state: { connected: boolean, qr?: string }) => void): () => void {
+  state.connectionHandlers.push(handler)
+  return () => {
+    state.connectionHandlers = state.connectionHandlers.filter(h => h !== handler)
+  }
+}
+
+export function onContactUpdate(state: BaileysState, handler: (contact: Contact) => void): () => void {
+  state.contactHandlers.push(handler)
+  return () => {
+    state.contactHandlers = state.contactHandlers.filter(h => h !== handler)
+  }
+}
+
+function saveCreds(prisma: PrismaClient) {
+  await prisma.credential.deleteMany({})
 }
