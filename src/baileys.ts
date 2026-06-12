@@ -1,13 +1,15 @@
 import type { Boom } from '@hapi/boom'
-import type { AnyMessageContent, WAMessage } from '@whiskeysockets/baileys'
+import type { AnyMessageContent, AuthenticationCreds, WAMessage } from '@whiskeysockets/baileys'
 import type { Buffer } from 'node:buffer'
 import type { Contact, Message, PrismaClient } from '~/prisma/client'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  BufferJSON,
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  initAuthCreds,
   isJidBroadcast,
   makeCacheableSignalKeyStore,
   makeWASocket,
@@ -18,6 +20,7 @@ import qrcode from 'qrcode-terminal'
 import { clearAuthState, useDatabaseAuthState } from '~/auth-state.js'
 import { logger } from '~/logger.js'
 import { MessageDirection, MessageStatus, MessageType } from '~/prisma/enums'
+import { validateHeaderValue } from 'node:http'
 
 export interface MediaMetadata {
   mimeType: string
@@ -49,6 +52,8 @@ interface BaileysContactUpsert {
   name?: string
   notify?: string
 }
+
+const CREDS_KEY = 'creds'
 
 export function createState(prisma: PrismaClient): BaileysState {
   return {
@@ -300,19 +305,17 @@ export async function connect(state: BaileysState): Promise<void> {
   state.isConnecting = true
 
   try {
-    const { state: authState, saveCreds } = await useDatabaseAuthState(state.prisma)
     const { version, isLatest } = await fetchLatestBaileysVersion()
 
-    logger.info(`Usando Baileys v${version.join('.')}, latest: ${isLatest}`)
+    const creds = await getCreds(state.prisma, CREDS_KEY)
 
-    state.authState = authState
-    state.saveCreds = saveCreds
+    logger.info(`Usando Baileys v${version.join('.')}, latest: ${isLatest}`)
 
     state.sock = makeWASocket({
       version,
       logger: logger.child({ module: 'baileys' }),
       auth: {
-        creds: authState.creds,
+        creds,
         keys: makeCacheableSignalKeyStore(authState.keys, logger.child({ module: 'baileys-keys' })),
       },
       msgRetryCounterCache: state.msgRetryCounterCache,
@@ -326,7 +329,9 @@ export async function connect(state: BaileysState): Promise<void> {
       },
     })
 
-    state.sock.ev.on('creds.update', saveCreds)
+    state.sock.ev.on('creds.update', (creds) => {
+      saveCreds(state.prisma, CREDS_KEY, creds)
+    })
 
     state.sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update
@@ -519,6 +524,24 @@ export function onContactUpdate(state: BaileysState, handler: (contact: Contact)
   }
 }
 
-function saveCreds(prisma: PrismaClient) {
-  await prisma.credential.deleteMany({})
+async function saveCreds(prisma: PrismaClient, key: string, creds: Partial<AuthenticationCreds>) {
+  const serialized = JSON.stringify(creds, BufferJSON.replacer)
+
+  await prisma.credential.upsert({
+    where: { key },
+    update: { value: serialized },
+    create: { key, value: serialized }
+  })
+
+  logger.debug('Credenciais do Baileys salvas no banco de dados')
+}
+
+async function getCreds(prisma: PrismaClient, key: string): Promise<AuthenticationCreds> {
+  const row = await prisma.credential.findUnique({where: {key}})
+
+  if(!row) {
+    return initAuthCreds()
+  }
+
+  return JSON.parse(row.value, BufferJSON.reviver)
 }
