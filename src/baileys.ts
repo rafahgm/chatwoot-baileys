@@ -1,5 +1,5 @@
 import type { Boom } from '@hapi/boom'
-import type { AnyMessageContent, AuthenticationCreds, WAMessage } from '@whiskeysockets/baileys'
+import type { AnyMessageContent, AuthenticationCreds, SignalDataTypeMap, WAMessage } from '@whiskeysockets/baileys'
 import type { Buffer } from 'node:buffer'
 import type { Contact, Message, PrismaClient } from '~/prisma/client'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -316,7 +316,56 @@ export async function connect(state: BaileysState): Promise<void> {
       logger: logger.child({ module: 'baileys' }),
       auth: {
         creds,
-        keys: makeCacheableSignalKeyStore(authState.keys, logger.child({ module: 'baileys-keys' })),
+        keys: makeCacheableSignalKeyStore(
+          {
+            async get(type, ids) {
+              const data: { [id: string]: SignalDataTypeMap[typeof type] } = {}
+              await Promise.all(
+                ids.map(async (id) => {
+                  const row = await state.prisma.credential.findUnique({ where: { key: `key:${type}:${id}` } })
+                  const value = row ? JSON.parse(row.value, BufferJSON.reviver) : null
+
+                  if (type === 'app-state-sync-key' && value) {
+                    data[id] = proto.Message.AppStateSyncKeyData.fromObject(value) as any
+                  }
+                  else {
+                    data[id] = value as any
+                  }
+                })
+              )
+
+              return data
+            },
+            async set(data: Record<any, any>) {
+              const tasks: Promise<void>[] = []
+
+              for (const category in data) {
+                for (const id in data[category]) {
+                  const value = data[category][id]
+                  const key = `key:${category}:${id}`
+                  if (value) {
+                    tasks.push((async () => {
+                      const serialized = JSON.stringify(value, BufferJSON.replacer)
+                      await state.prisma.credential.upsert({
+                        where: { key },
+                        update: { value: serialized },
+                        create: { key, value: serialized }
+                      })
+                    })())
+                  }else {
+                    tasks.push((async () => {
+                      await state.prisma.credential.delete({ where: { key } }).catch(() => {})
+                    })())
+                  }
+                }
+
+              }
+              await Promise.all(tasks)
+
+            }
+          },
+          logger.child({ module: 'baileys-keys' })
+        ),
       },
       msgRetryCounterCache: state.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
@@ -537,9 +586,9 @@ async function saveCreds(prisma: PrismaClient, key: string, creds: Partial<Authe
 }
 
 async function getCreds(prisma: PrismaClient, key: string): Promise<AuthenticationCreds> {
-  const row = await prisma.credential.findUnique({where: {key}})
+  const row = await prisma.credential.findUnique({ where: { key } })
 
-  if(!row) {
+  if (!row) {
     return initAuthCreds()
   }
 
